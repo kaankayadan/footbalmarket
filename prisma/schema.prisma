@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String        @id @default(cuid())
+  name              String?
+  email             String        @unique
+  emailVerified     DateTime?
+  image             String?
+  password          String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  balance           Decimal       @default(1000)
+  isAdmin           Boolean?      @default(false)
+  trades            Trade[]
+  transactions      Transaction[]
+  ownedMarkets      Market[]      @relation("MarketCreator")
+  holdings          UserOutcome[]
+  orders            Order[]       // Add relation to orders
+}
+
+model Market {
+  id               String    @id @default(cuid())
+  title            String
+  description      String
+  category         String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  endDate          DateTime
+  isResolved       Boolean   @default(false)
+  resolvedOutcomeId String?
+  creatorId        String
+  creator          User      @relation("MarketCreator", fields: [creatorId], references: [id])
+  outcomes         Outcome[]
+  trades           Trade[]
+  volume           Decimal   @default(0)
+  orders           Order[]   // Add relation to orders
+}
+
+model Outcome {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  marketId    String
+  market      Market        @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  probability Decimal       @default(0)
+  isResolved  Boolean       @default(false)
+  trades      Trade[]
+  holders     UserOutcome[]
+  orders      Order[]       // Add relation to orders
+}
+
+// New model for order book functionality
+model Order {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  marketId    String
+  market      Market   @relation(fields: [marketId], references: [id])
+  outcomeId   String
+  outcome     Outcome  @relation(fields: [outcomeId], references: [id])
+  type        String   // "BUY" or "SELL"
+  orderType   String   // "LIMIT" or "MARKET"
+  amount      Decimal  // Quantity of shares
+  price       Decimal  // Price per share (0.00-1.00)
+  filled      Decimal  @default(0) // Amount that has been filled
+  status      String   @default("OPEN") // "OPEN", "FILLED", "CANCELLED"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Trade {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  marketId    String
+  market      Market   @relation(fields: [marketId], references: [id])
+  outcomeId   String
+  outcome     Outcome  @relation(fields: [outcomeId], references: [id])
+  amount      Decimal
+  price       Decimal
+  type        String
+  createdAt   DateTime @default(now())
+}
+
+model Transaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Decimal
+  type      String
+  metadata  String?  // Store additional transaction data like profitLoss as a JSON string
+  createdAt DateTime @default(now())
+}
+
+model UserOutcome {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  outcomeId   String
+  outcome     Outcome  @relation(fields: [outcomeId], references: [id])
+  quantity    Decimal  @default(0)
+  avgPrice    Decimal
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, outcomeId])
+}
