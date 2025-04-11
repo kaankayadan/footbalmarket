@@ -100,16 +100,30 @@ export async function GET(req: Request) {
       const avgPrice = parseFloat(holding.avgPrice.toString());
       const quantity = parseFloat(holding.quantity.toString());
       
-      // Determine if this is a YES or NO position based on the price
-      // If avgPrice > 0.5, it's likely a NO position (since NO positions are usually cheaper)
-      // This is a heuristic and may need adjustment based on your specific market dynamics
-      // Alternative: We could store this information when creating the holding
-      const positionType = avgPrice <= 0.5 ? "YES" as const : "NO" as const;
+      // Improved heuristic for position type detection.
+      // If a position's average price is closer to the outcome probability than to (1 - probability), it's a YES position.
+      // Otherwise, it's a NO position.
+      const currentProbability = parseFloat(holding.outcome.probability.toString());
+      const isProbablyYes = Math.abs(avgPrice - currentProbability) <= Math.abs(avgPrice - (1 - currentProbability));
+      const positionType = isProbablyYes ? "YES" as const : "NO" as const;
+      // Calculate value differently based on position type
+      let currentValue, costBasis, unrealizedPL, percentChange;
       
-      const currentValue = quantity * currentPrice;
-      const costBasis = quantity * avgPrice;
-      const unrealizedPL = currentValue - costBasis;
-      const percentChange = avgPrice > 0 ? ((currentPrice - avgPrice) / avgPrice) * 100 : 0;
+      if (positionType === "YES") {
+        // For YES positions, use the probability directly
+        currentValue = quantity * currentPrice;
+        costBasis = quantity * avgPrice;
+        unrealizedPL = currentValue - costBasis;
+        percentChange = avgPrice > 0 ? ((currentPrice - avgPrice) / avgPrice) * 100 : 0;
+      } else {
+        // For NO positions, use (1 - probability) as the price
+        const noCurrentPrice = 1 - currentPrice;
+        // avgPrice is already stored as the NO price (1 - probability at time of purchase)
+        currentValue = quantity * noCurrentPrice;
+        costBasis = quantity * avgPrice;
+        unrealizedPL = currentValue - costBasis;
+        percentChange = avgPrice > 0 ? ((noCurrentPrice - avgPrice) / avgPrice) * 100 : 0;
+      }
       
       return {
         id: holding.id,

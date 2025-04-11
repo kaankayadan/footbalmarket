@@ -214,7 +214,20 @@ export default function MarketPage() {
     
     // For sell trades, we'll use the shares field if provided
     if (tradeType === "SELL" && shares && selectedOutcome) {
+      // Verify the user has enough shares before proceeding
+      const availableShares = getUserHoldingForOutcome(selectedOutcome, positionType);
       const sharesToSell = parseFloat(shares);
+      
+      if (sharesToSell > availableShares) {
+        toast({
+          title: "Insufficient shares",
+          description: `You only have ${availableShares.toFixed(6)} shares available to sell`,
+          variant: "destructive",
+        });
+        setIsTrading(false);
+        return;
+      }
+      
       const outcomeProb = positionType === "YES"
         ? Number(market?.outcomes.find(o => o.id === selectedOutcome)?.probability)
         : (1 - Number(market?.outcomes.find(o => o.id === selectedOutcome)?.probability));
@@ -234,15 +247,11 @@ export default function MarketPage() {
       // - "Sell No" at price (1-P) = BUY at price P (of the same outcome)
       
       // Determine the actual trade type based on position type early to use in our checks
-      const actualTradeType = positionType === "NO"
-        ? (tradeType === "BUY" ? "SELL" : "BUY")
-        : tradeType;
+      const actualTradeType = tradeType;
       
-      // First, check if user has enough shares when selling
-      // Need to check in two cases:
-      // 1. When explicitly selling YES shares (SELL + YES)
-      // 2. When buying NO shares (BUY + NO) which is effectively selling YES shares
-      if (actualTradeType === "SELL") {
+      // First, check if user has enough shares when explicitly selling YES shares
+      // No need to check when buying NO shares anymore - this is handled server-side
+      if (actualTradeType === "SELL" && positionType === "YES") {
         // First check if we already have user holdings loaded
         if (!isLoadingHoldings && userHoldings.length > 0) {
           // Use the holdings we already have
@@ -319,6 +328,7 @@ export default function MarketPage() {
           outcomeId: selectedOutcome,
           amount: tradeType === "BUY" ? tradeAmount : parseFloat(shares), // Use shares as amount for SELL
           type: actualTradeType,
+          positionType: positionType, // Pass the position type to the API
           isSharesMode: tradeType === "SELL" // Set isSharesMode flag for SELL operations
         }),
       });
@@ -683,6 +693,14 @@ export default function MarketPage() {
                                     const calculatedAmount = (maxShares * outcomeProb).toFixed(2);
                                     setAmount(calculatedAmount);
                                     return;
+                                  } else {
+                                    // If there are no shares to sell, show toast and return without proceeding
+                                    toast({
+                                      title: "No shares to sell",
+                                      description: "You don't have any shares of this outcome to sell.",
+                                      variant: "destructive",
+                                    });
+                                    return;
                                   }
                                 }
                                 
@@ -703,6 +721,7 @@ export default function MarketPage() {
                                 }
                               }}
                               className="flex-1"
+                              disabled={preset === "Max" && tradeType === "SELL" && getUserHoldingForOutcome(selectedOutcome || "", positionType) <= 0}
                             >
                               {preset === "Max" && tradeType === "SELL" ? "Sell All" : preset === "Max" ? preset : `$${preset}`}
                             </Button>
@@ -776,7 +795,7 @@ export default function MarketPage() {
                       <div className="flex justify-between">
                         <span className="text-sm font-medium">{trade.user.name}</span>
                         <span className={`text-sm font-medium ${trade.type === "BUY" ? "text-green-600" : "text-red-600"}`}>
-                          {trade.type === "BUY" ? "Bought" : "Sold"} {trade.amount} coins
+                          {trade.type === "BUY" ? "Bought" : "Sold"} {Math.abs(trade.amount)} coins
                         </span>
                       </div>
                       <div className="text-xs text-muted-foreground">
